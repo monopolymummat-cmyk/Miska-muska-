@@ -1,10 +1,10 @@
 node_modules/
-output/
+output/frames/
 renders/
 __pycache__/
 *.pyc
 *.log
-*.mp4
+!output/videos/*.mp4
 *.mp3
 *.wav
 *.png
