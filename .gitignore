@@ -1,0 +1,14 @@
+node_modules/
+output/
+renders/
+__pycache__/
+*.pyc
+*.log
+*.mp4
+*.mp3
+*.wav
+*.png
+*.jpg
+*.webm
+dist/
+build/
