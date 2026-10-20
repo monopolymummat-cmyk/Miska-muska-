@@ -97,8 +97,8 @@
 
       // Scene
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0a0c14);
-      scene.fog = new THREE.FogExp2(0x0a0c14, 0.035);
+      scene.background = new THREE.Color(0x060810);
+      scene.fog = new THREE.FogExp2(0x060810, 0.035);
 
       // Camera (9:16 vertical view)
       camera = new THREE.PerspectiveCamera(45, 1080 / 1920, 0.1, 100);
@@ -129,7 +129,7 @@
       scene.add(rimLight2);
 
       // Front Main Spotlight
-      const mainSpot = new THREE.SpotLight(0xffffff, 5.0, 20, Math.PI / 4, 0.5, 1);
+      const mainSpot = new THREE.SpotLight(0xffffff, 5.5, 20, Math.PI / 4, 0.5, 1);
       mainSpot.position.set(0, 5, 8);
       mainSpot.castShadow = true;
       mainSpot.shadow.mapSize.width = 2048;
@@ -145,122 +145,236 @@
       // Studio Floor Platform
       const floorGeo = new THREE.PlaneGeometry(30, 30);
       const floorMat = new THREE.MeshStandardMaterial({
-        color: 0x0f111c,
+        color: 0x0a0c16,
         roughness: 0.35,
         metalness: 0.85
       });
       const floor = new THREE.Mesh(floorGeo, floorMat);
       floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -2.5;
+      floor.position.y = -2.8;
       floor.receiveShadow = true;
       scene.add(floor);
 
-      build3DSubject();
+      buildAnatomicMolar();
       isReady = true;
     }
 
-    function build3DSubject() {
+    function buildAnatomicMolar() {
       toothGroup = new THREE.Group();
 
-      // Enamel / Crown Geometry
-      const crownGeo = new THREE.CylinderGeometry(1.2, 1.0, 1.8, 32, 16);
+      // ----------------------------------------------------
+      // 1. ANATOMICALLY ACCURATE MOLAR CROWN (4 CUSPS + GROOVES)
+      // ----------------------------------------------------
+      const crownGeo = new THREE.BoxGeometry(2.1, 1.7, 1.8, 48, 48, 48);
       const posAttr = crownGeo.attributes.position;
+
       for (let i = 0; i < posAttr.count; i++) {
         let x = posAttr.getX(i);
         let y = posAttr.getY(i);
         let z = posAttr.getZ(i);
-        let bump = Math.sin(x * 3) * 0.08 + Math.cos(z * 3) * 0.08;
-        if (y > 0.5) bump += Math.sin(x * 5 + z * 5) * 0.15;
-        posAttr.setXYZ(i, x + bump * 0.1, y, z + bump * 0.1);
+
+        // Normalized relative height
+        const ny = (y + 0.85) / 1.7; // 0 (bottom/cervical) to 1 (top/occlusal surface)
+
+        // Bulge at cervical neck / waist contour (real anatomical tooth bulge)
+        let radiusFactor = 1.0;
+        if (ny < 0.2) {
+          // Narrow neck at cementoenamel junction
+          radiusFactor = 0.7 + ny * 1.5;
+        } else if (ny < 0.6) {
+          // Equatorial height of contour
+          radiusFactor = 1.0 + Math.sin((ny - 0.2) * Math.PI / 0.4) * 0.12;
+        } else {
+          // Taper towards occlusal surface
+          radiusFactor = 1.12 - (ny - 0.6) * 0.3;
+        }
+
+        x *= radiusFactor;
+        z *= radiusFactor;
+
+        // Occlusal Surface Cusp Anatomy (Top surface modeling)
+        if (ny > 0.65) {
+          const occlusalP = (ny - 0.65) / 0.35;
+
+          // 4 Main Cusps: Mesiobuccal, Distobuccal, Mesiolingual, Distolingual
+          const cuspMB = Math.exp(-((x + 0.5)**2 + (z - 0.4)**2) * 2.8) * 0.38;
+          const cuspDB = Math.exp(-((x - 0.5)**2 + (z - 0.4)**2) * 2.8) * 0.35;
+          const cuspML = Math.exp(-((x + 0.5)**2 + (z + 0.4)**2) * 2.8) * 0.36;
+          const cuspDL = Math.exp(-((x - 0.5)**2 + (z + 0.4)**2) * 2.8) * 0.32;
+
+          // Central Fossa / Pit (depression in center)
+          const centralFossa = -Math.exp(-(x**2 + z**2) * 3.5) * 0.30;
+
+          // Developmental Grooves (Cross-shaped fissure pattern)
+          const grooveX = -Math.exp(-(x**2) * 12.0) * 0.15;
+          const grooveZ = -Math.exp(-(z**2) * 12.0) * 0.15;
+
+          const anatomicalDisplacement = (cuspMB + cuspDB + cuspML + cuspDL + centralFossa + grooveX + grooveZ) * occlusalP;
+          y += anatomicalDisplacement;
+        }
+
+        // Rounded natural corners
+        const cornerDist = Math.sqrt(x*x + z*z);
+        if (cornerDist > 0.8) {
+          const smooth = 1.0 - (cornerDist - 0.8) * 0.18;
+          x *= smooth;
+          z *= smooth;
+        }
+
+        posAttr.setXYZ(i, x, y, z);
       }
       crownGeo.computeVertexNormals();
 
-      const crownMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 0.12,
-        metalness: 0.08,
-        clearcoat: 0.9,
-        clearcoatRoughness: 0.1
-      });
-      const crown = new THREE.Mesh(crownGeo, crownMat);
-      crown.castShadow = true;
-      crown.receiveShadow = true;
-      toothGroup.add(crown);
-
-      // Roots
-      const rootMat = new THREE.MeshStandardMaterial({
-        color: 0xe8e0d5,
-        roughness: 0.35,
-        metalness: 0.0
+      // Enamel Material (High realistic polish, subtle translucency feel)
+      const enamelMat = new THREE.MeshStandardMaterial({
+        color: 0xfaf8f2,
+        roughness: 0.15,
+        metalness: 0.05,
+        roughnessMap: null,
+        clearcoat: 0.95,
+        clearcoatRoughness: 0.08
       });
 
-      for (let side = -1; side <= 1; side += 2) {
-        const rootGeo = new THREE.ConeGeometry(0.45, 2.0, 24);
-        const root = new THREE.Mesh(rootGeo, rootMat);
-        root.position.set(side * 0.5, -1.8, 0);
-        root.rotation.z = side * -0.15;
-        root.castShadow = true;
-        toothGroup.add(root);
+      const crownMesh = new THREE.Mesh(crownGeo, enamelMat);
+      crownMesh.position.y = 0.5;
+      crownMesh.castShadow = true;
+      crownMesh.receiveShadow = true;
+      toothGroup.add(crownMesh);
+
+      // ----------------------------------------------------
+      // 2. REALISTIC DUAL ROOT SYSTEM (MESIAL & DISTAL ROOTS)
+      // ----------------------------------------------------
+      function createAnatomicRoot(isMesial) {
+        const rootGroup = new THREE.Group();
+        const rootGeo = new THREE.CylinderGeometry(0.55, 0.12, 2.2, 32, 32);
+        const rPos = rootGeo.attributes.position;
+
+        for (let i = 0; i < rPos.count; i++) {
+          let rx = rPos.getX(i);
+          let ry = rPos.getY(i); // +1.1 to -1.1
+          let rz = rPos.getZ(i);
+
+          const progress = (1.1 - ry) / 2.2; // 0 at top neck, 1 at root tip
+
+          // Flatten root cross section (roots are oval/flattened mesiodistally)
+          rx *= 0.75;
+          rz *= 1.15;
+
+          // Natural anatomical root curve (mesial bends slightly distal near apex)
+          const curveDirection = isMesial ? 0.25 : -0.20;
+          rx += Math.pow(progress, 1.8) * curveDirection;
+
+          // Tapering
+          const scale = 1.0 - Math.pow(progress, 1.3) * 0.75;
+          rx *= scale;
+          rz *= scale;
+
+          rPos.setXYZ(i, rx, ry, rz);
+        }
+        rootGeo.computeVertexNormals();
+
+        const rootMat = new THREE.MeshStandardMaterial({
+          color: 0xdfd4be,
+          roughness: 0.45,
+          metalness: 0.02
+        });
+
+        const rootMesh = new THREE.Mesh(rootGeo, rootMat);
+        rootMesh.castShadow = true;
+        rootMesh.receiveShadow = true;
+        rootGroup.add(rootMesh);
+
+        return rootGroup;
       }
 
-      // Internal Cavity
-      const cavityGeo = new THREE.SphereGeometry(0.42, 24, 24);
+      const mesialRoot = createAnatomicRoot(true);
+      mesialRoot.position.set(-0.6, -1.3, 0);
+      toothGroup.add(mesialRoot);
+
+      const distalRoot = createAnatomicRoot(false);
+      distalRoot.position.set(0.6, -1.3, 0);
+      toothGroup.add(distalRoot);
+
+      // ----------------------------------------------------
+      // 3. CAVITY & INFECTED DENTIN CHAMBER
+      // ----------------------------------------------------
+      const cavityGeo = new THREE.SphereGeometry(0.48, 32, 32);
       const cavityMat = new THREE.MeshStandardMaterial({
-        color: 0x1a0d05,
-        roughness: 0.9,
-        metalness: 0.1,
-        emissive: 0x440000,
-        emissiveIntensity: 0.5
+        color: 0x1c0f08,
+        roughness: 0.85,
+        metalness: 0.05,
+        emissive: 0x550d00,
+        emissiveIntensity: 0.6
       });
       cavityMesh = new THREE.Mesh(cavityGeo, cavityMat);
-      cavityMesh.position.set(0, 0.4, 0.85);
-      cavityMesh.scale.set(1, 1.2, 0.5);
+      cavityMesh.position.set(0.1, 0.8, 0.65);
+      cavityMesh.scale.set(1.1, 0.8, 0.7);
       toothGroup.add(cavityMesh);
 
-      // Internal Nerve
-      const nerveGeo = new THREE.CylinderGeometry(0.12, 0.08, 2.8, 16);
+      // ----------------------------------------------------
+      // 4. PULP & NERVE CANALS
+      // ----------------------------------------------------
+      const nerveGroup = new THREE.Group();
       const nerveMat = new THREE.MeshStandardMaterial({
         color: 0xff0033,
-        roughness: 0.25,
-        emissive: 0xff0033,
-        emissiveIntensity: 0.8
+        roughness: 0.2,
+        emissive: 0xff0022,
+        emissiveIntensity: 0.85
       });
-      nerveMesh = new THREE.Mesh(nerveGeo, nerveMat);
-      nerveMesh.position.set(0, -0.6, 0);
-      toothGroup.add(nerveMesh);
 
-      toothGroup.position.set(0, 0, 0);
+      // Pulp Chamber
+      const pulpGeo = new THREE.SphereGeometry(0.32, 16, 16);
+      const pulpMesh = new THREE.Mesh(pulpGeo, nerveMat);
+      pulpMesh.position.set(0, -0.2, 0);
+      nerveGroup.add(pulpMesh);
+
+      // Root Canals
+      for (let side of [-0.55, 0.55]) {
+        const canalGeo = new THREE.CylinderGeometry(0.08, 0.03, 1.8, 16);
+        const canal = new THREE.Mesh(canalGeo, nerveMat);
+        canal.position.set(side, -1.1, 0);
+        canal.rotation.z = side * -0.1;
+        nerveGroup.add(canal);
+      }
+      nerveMesh = nerveGroup;
+      toothGroup.add(nerveGroup);
+
+      toothGroup.position.set(0, -0.1, 0);
       scene.add(toothGroup);
 
-      // Dental Drill
+      // ----------------------------------------------------
+      // 5. HIGH-PRECISION DENTAL HIGH-SPEED HANDPIECE & DRILL
+      // ----------------------------------------------------
       drillGroup = new THREE.Group();
 
-      const handleGeo = new THREE.CylinderGeometry(0.15, 0.18, 3.5, 24);
+      // Metallic Contra-Angle Handpiece
+      const handpieceGeo = new THREE.CylinderGeometry(0.18, 0.22, 3.8, 32);
       const metalMat = new THREE.MeshStandardMaterial({
-        color: 0xeeeeee,
+        color: 0xe0e5ec,
         metalness: 0.95,
-        roughness: 0.08
+        roughness: 0.12
       });
-      const handle = new THREE.Mesh(handleGeo, metalMat);
-      handle.rotation.z = Math.PI / 4;
-      drillGroup.add(handle);
+      const handpiece = new THREE.Mesh(handpieceGeo, metalMat);
+      handpiece.rotation.z = Math.PI / 4;
+      drillGroup.add(handpiece);
 
-      const tipGeo = new THREE.ConeGeometry(0.06, 0.8, 16);
-      const tipMat = new THREE.MeshStandardMaterial({
-        color: 0xffea00,
+      // Diamond Burr Tip
+      const burrGeo = new THREE.ConeGeometry(0.08, 0.75, 24);
+      const burrMat = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
         metalness: 0.9,
-        roughness: 0.15
+        roughness: 0.2
       });
-      const tip = new THREE.Mesh(tipGeo, tipMat);
-      tip.position.set(-1.3, -1.3, 0);
-      tip.rotation.z = Math.PI / 4 + Math.PI;
-      drillGroup.add(tip);
+      const burr = new THREE.Mesh(burrGeo, burrMat);
+      burr.position.set(-1.42, -1.42, 0);
+      burr.rotation.z = Math.PI / 4 + Math.PI;
+      drillGroup.add(burr);
 
       drillGroup.position.set(3, 3, 2);
       scene.add(drillGroup);
 
-      // Sparks
-      const particleCount = 150;
+      // Sparks / Friction Particles
+      const particleCount = 180;
       const particleGeo = new THREE.BufferGeometry();
       const posArray = new Float32Array(particleCount * 3);
       for(let i=0; i<particleCount*3; i++) {
@@ -268,13 +382,13 @@
       }
       particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
       const particleMat = new THREE.PointsMaterial({
-        size: 0.07,
-        color: 0xffcc00,
+        size: 0.08,
+        color: 0xffaa00,
         transparent: true,
         opacity: 0
       });
       pulseParticleSystem = new THREE.Points(particleGeo, particleMat);
-      pulseParticleSystem.position.set(0, 0.4, 0.85);
+      pulseParticleSystem.position.set(0.1, 0.8, 0.65);
       scene.add(pulseParticleSystem);
     }
 
@@ -299,7 +413,7 @@
         camera.position.x = 0.4 * Math.cos(p * Math.PI * 2);
         camera.position.y = 0.8 + p * 0.3;
         camera.position.z = 3.7 - p * 1.2;
-        camera.lookAt(0, 0.4, 0.85);
+        camera.lookAt(0.1, 0.8, 0.65);
       } else {
         const p = (progress - 0.70) / 0.30;
         camera.position.x = 0;
@@ -308,16 +422,16 @@
         camera.lookAt(0, 0, 0);
       }
 
-      // Drill Motion
+      // Drill Motion & Decay Removal Animation
       if (progress > 0.20 && progress < 0.80) {
         const drillProgress = Math.min(1, (progress - 0.20) / 0.15);
-        const drillX = 3.0 * (1 - drillProgress) + 0.15 * drillProgress;
-        const drillY = 3.0 * (1 - drillProgress) + 0.5 * drillProgress;
-        const drillZ = 2.0 * (1 - drillProgress) + 1.0 * drillProgress;
+        const drillX = 3.0 * (1 - drillProgress) + 0.22 * drillProgress;
+        const drillY = 3.0 * (1 - drillProgress) + 0.92 * drillProgress;
+        const drillZ = 2.0 * (1 - drillProgress) + 0.80 * drillProgress;
         drillGroup.position.set(drillX, drillY, drillZ);
 
-        drillGroup.position.x += (Math.random() - 0.5) * 0.05;
-        drillGroup.position.y += (Math.random() - 0.5) * 0.05;
+        drillGroup.position.x += (Math.random() - 0.5) * 0.04;
+        drillGroup.position.y += (Math.random() - 0.5) * 0.04;
 
         pulseParticleSystem.material.opacity = 0.95;
         const positions = pulseParticleSystem.geometry.attributes.position.array;
@@ -329,17 +443,21 @@
         pulseParticleSystem.geometry.attributes.position.needsUpdate = true;
 
         const cleanProgress = Math.min(1, Math.max(0, (progress - 0.35) / 0.35));
-        cavityMesh.scale.set(1 - cleanProgress * 0.85, 1.2 - cleanProgress * 0.95, 0.5 - cleanProgress * 0.45);
+        cavityMesh.scale.set(1.1 * (1 - cleanProgress * 0.88), 0.8 * (1 - cleanProgress * 0.92), 0.7 * (1 - cleanProgress * 0.85));
       } else {
         drillGroup.position.set(5, 5, 5);
         pulseParticleSystem.material.opacity = 0;
       }
 
       if (nerveMesh) {
-        nerveMesh.material.emissiveIntensity = 0.5 + Math.sin(timeInSeconds * 10) * 0.4;
+        nerveMesh.children.forEach(child => {
+          if (child.material && child.material.emissiveIntensity !== undefined) {
+            child.material.emissiveIntensity = 0.6 + Math.sin(timeInSeconds * 12) * 0.35;
+          }
+        });
       }
 
-      toothGroup.rotation.y = Math.sin(timeInSeconds * 1.2) * 0.25;
+      toothGroup.rotation.y = Math.sin(timeInSeconds * 1.2) * 0.22;
 
       updateCaptionOverlay(timeInSeconds);
 
@@ -354,8 +472,8 @@
       if (sub) {
         const words = sub.text.split(' ');
         const html = words.map((w, idx) => {
-          const cleanW = w.replace(/[^a-zA-Z0-0]/g, '').toLowerCase();
-          if (['tooth', 'cavity', 'drill', 'nerve', 'pain', 'decay', 'clean'].includes(cleanW)) {
+          const cleanW = w.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          if (['tooth', 'cavity', 'drill', 'nerve', 'pain', 'decay', 'clean', 'cusps', 'molar'].includes(cleanW)) {
             return `<span class="word-accent">${w}</span>`;
           } else if (idx % 3 === 1) {
             return `<span class="word-highlight">${w}</span>`;

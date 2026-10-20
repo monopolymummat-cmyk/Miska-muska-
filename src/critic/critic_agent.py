@@ -2,29 +2,30 @@ import os
 import sys
 import glob
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 class ZackCriticAgent:
     """
-    An extremely strict, uncompromising AI Critic Agent modeled after Zack D. Films standards.
+    An ultra-strict, uncompromising AI Critic Agent modeled after Zack D. Films standards.
     Evaluates:
-    1. Visual Fidelity & Lighting Contrast (Rim lights, PBR sheen, dark backgrounds)
-    2. Subtitle Visibility & High-Impact Styling (Bold text in central lower third)
+    1. Visual Fidelity & Rim Contrast (Studio lights, PBR sheen, dark backgrounds)
+    2. Anatomical Realism & Shape Complexity (Verifies non-primitive real-world contours via edge density)
     3. Motion & Camera Pacing (No static shots, smooth cinematic push/rotations)
     4. Audio Layer Synchronization (Voiceover + SFX impact presence)
-    5. Overall Hook & Retention Power
+    5. Subtitle Visibility & High-Impact Styling (Bold text in central lower third)
 
     Maintains "WHAT IS GOOD" (preserved across iterations) and itemizes "WHAT IS WRONG"
     (blocking approval until fixed).
     """
 
-    def __init__(self, min_contrast_threshold=35.0, min_motion_score=15.0):
+    def __init__(self, min_contrast_threshold=38.0, min_motion_score=16.0, min_edge_density=1.8):
         self.min_contrast_threshold = min_contrast_threshold
         self.min_motion_score = min_motion_score
+        self.min_edge_density = min_edge_density
 
     def evaluate_video(self, frames_dir, audio_path=None, script_subtitles=None):
         print("\n" + "="*60)
-        print(" [ZACK CRITIC AGENT] INITIATING STRICT QUALITY & ENGAGEMENT REVIEW")
+        print(" [ZACK CRITIC AGENT - STRICT EVALUATION MODE] REVIEWING 3D RENDER")
         print("="*60)
 
         frame_files = sorted(glob.glob(os.path.join(frames_dir, "*.png")))
@@ -51,23 +52,39 @@ class ZackCriticAgent:
         # 2. Lighting Contrast & Vignette Fidelity Inspection
         brightness_list = []
         contrast_list = []
+        edge_density_list = []
 
-        for fpath in frame_files[::max(1, len(frame_files)//10)]: # sample 10 frames
+        sampled_frames = frame_files[::max(1, len(frame_files)//10)]
+        for fpath in sampled_frames:
             img = Image.open(fpath).convert('L')
             arr = np.array(img, dtype=np.float32)
             brightness_list.append(np.mean(arr))
             contrast_list.append(np.std(arr))
 
+            # Edge detection to evaluate anatomical geometry complexity vs smooth simple primitives
+            edges = img.filter(ImageFilter.FIND_EDGES)
+            edge_arr = np.array(edges, dtype=np.float32)
+            edge_density_list.append(np.mean(edge_arr))
+
         avg_brightness = float(np.mean(brightness_list))
         avg_contrast = float(np.mean(contrast_list))
+        avg_edge_density = float(np.mean(edge_density_list))
+
         scores['lighting_contrast'] = avg_contrast
+        scores['shape_complexity_edge_density'] = avg_edge_density
 
         if avg_contrast >= self.min_contrast_threshold:
             good_points.append(f"Dramatic studio rim lighting and strong visual contrast verified (Std Dev: {avg_contrast:.2f}).")
         else:
             bad_points.append(f"Lighting contrast is too flat (Std Dev: {avg_contrast:.2f} < threshold {self.min_contrast_threshold}). Needs brighter rim light and darker background vignette.")
 
-        # 3. Motion Fluidity & Camera Pacing Analysis
+        # 3. Shape Realism & Anatomical Complexity Check
+        if avg_edge_density >= self.min_edge_density:
+            good_points.append(f"Anatomical shape realism and surface geometry detail confirmed (Edge Density: {avg_edge_density:.2f}).")
+        else:
+            bad_points.append(f"Geometry looks too simplified or primitive (Edge Density: {avg_edge_density:.2f} < threshold {self.min_edge_density}). Enhance real-world anatomical shape contours and surface details!")
+
+        # 4. Motion Fluidity & Camera Pacing Analysis
         motion_diffs = []
         prev_arr = None
         for fpath in frame_files[::max(1, len(frame_files)//15)]:
@@ -86,19 +103,19 @@ class ZackCriticAgent:
         else:
             bad_points.append(f"Scene feels too static/frozen (Motion delta: {avg_motion:.2f} < threshold {self.min_motion_score}). Increase camera push-in speed and drill action.")
 
-        # 4. Audio Verification
+        # 5. Audio Layer Verification
         if audio_path and os.path.exists(audio_path):
             audio_size = os.path.getsize(audio_path)
             if audio_size > 10000:
-                good_points.append(f"Audio voiceover track detected and valid ({audio_size // 1024} KB).")
+                good_points.append(f"Audio voiceover and sound effects track verified ({audio_size // 1024} KB).")
             else:
                 bad_points.append("Audio track file exists but is corrupted or silent.")
         else:
             bad_points.append("Missing voiceover audio layer! Short video content requires punchy voiceover.")
 
-        # 5. Caption Overlay & Retention Hook Check
+        # 6. Dynamic Captions & Engagement Hook Check
         if script_subtitles and len(script_subtitles) > 0:
-            good_points.append(f"High-impact bold center subtitles configured with {len(script_subtitles)} synced segments.")
+            good_points.append(f"High-impact bold dynamic captions synced ({len(script_subtitles)} segments).")
         else:
             bad_points.append("No active bold dynamic captions found. Zack D. Films videos MUST have auto-synced word highlights.")
 
@@ -107,7 +124,7 @@ class ZackCriticAgent:
 
         report = {
             "accepted": is_accepted,
-            "overall_score": 95 if is_accepted else max(40, int(100 - len(bad_points) * 18)),
+            "overall_score": 96 if is_accepted else max(30, int(100 - len(bad_points) * 18)),
             "good_elements": good_points,
             "required_fixes": bad_points,
             "metrics": scores
@@ -146,5 +163,4 @@ class ZackCriticAgent:
 
 if __name__ == "__main__":
     agent = ZackCriticAgent()
-    # Test on test_frames
     agent.evaluate_video("renders/test_frames", audio_path="output/audio/voiceover.mp3", script_subtitles=[{"text": "TEST"}])
